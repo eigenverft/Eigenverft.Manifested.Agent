@@ -9,6 +9,7 @@ Windows-focused PowerShell module for installing, managing, and invoking isolate
 ## What it does
 
 - Installs the Codex CLI into named slots under `$HOME\.codex-slots`
+- Caches and installs the Microsoft Visual C++ Redistributable needed for Codex Windows sandbox runs
 - Downloads and verifies a managed Node.js LTS runtime under `%LOCALAPPDATA%\CodexSlots`
 - Switches the active slot by updating `PATH` for the current process and user scope
 - Persists slot metadata and wrapper-side named session state
@@ -19,6 +20,7 @@ Windows-focused PowerShell module for installing, managing, and invoking isolate
 - Windows x64 or Windows ARM64
 - PowerShell 5.1 or newer
 - Network access to PowerShell Gallery and `nodejs.org` for first-time setup
+- Network access to `aka.ms` for first-time VC++ runtime bootstrap caching
 - Codex CLI access/authentication as required by `@openai/codex`
 
 ## Installation
@@ -38,6 +40,8 @@ Use the included bootstrap script if the machine still needs `PowerShellGet` and
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install\CodexInit.ps1
 ```
+
+The bootstrap script prepares NuGet, `PackageManagement`, and `PowerShellGet` for the current user before installing `Eigenverft.Manifested.Codex` from PSGallery.
 
 Then start a new console session and run:
 
@@ -81,7 +85,7 @@ Switching slots with `Use-CodexSlot` updates `PATH` for both the current PowerSh
 
 ```powershell
 Initialize-CodexSlot -Name default
-Initialize-CodexSlot -Name experimental -RefreshNode -ForceCodex
+Initialize-CodexSlot -Name experimental -RefreshVCRuntime -RefreshNode -ForceCodex
 Use-CodexSlot -Name experimental
 Test-CodexSlot -Name experimental
 Get-CodexSlots
@@ -126,6 +130,7 @@ Default locations:
 - Slots root: `$HOME\.codex-slots`
 - Local state root: `%LOCALAPPDATA%\CodexSlots`
 - Node ZIP cache: `%LOCALAPPDATA%\CodexSlots\cache\node`
+- VC++ redistributable cache: `%LOCALAPPDATA%\CodexSlots\cache\vc-runtime`
 - Managed Node runtimes: `%LOCALAPPDATA%\CodexSlots\tools\node`
 - Named session store: `%LOCALAPPDATA%\CodexSlots\sessions\named-sessions.json`
 
@@ -165,6 +170,13 @@ Node runtime and cache:
 - `Ensure-NodeZip`
 - `Ensure-NodeRuntime`
 
+VC++ runtime and cache:
+
+- `Get-CachedVCRuntimeInstaller`
+- `Get-InstalledVCRuntime`
+- `Ensure-VCRuntimeInstaller`
+- `Ensure-VCRuntime`
+
 Metadata, install, and session helpers:
 
 - `Get-CodexManagerState`
@@ -183,7 +195,9 @@ Metadata, install, and session helpers:
 ## Notes
 
 - First-time initialization downloads the latest Node.js LTS ZIP for the current Windows architecture and verifies its SHA256 before extraction.
+- First-time initialization also caches the latest `vc_redist.x64.exe`, verifies its Microsoft Authenticode signature, and installs it when the machine does not already have an equal or newer x64 runtime.
 - If `nodejs.org` is unavailable later, the module can fall back to the newest cached ZIP already present on disk.
+- If `aka.ms` is unavailable later, the module can fall back to the cached VC++ bootstrapper already present on disk.
 - `Invoke-CodexTask` defaults to `--dangerously-bypass-approvals-and-sandbox`. Use `-AllowDangerous:$false` if you want the initial run to use Codex sandboxing instead.
 - Named sessions store the Codex thread id plus the last working directory. Resume runs temporarily change the PowerShell working directory because `codex exec resume` does not expose `--cd`.
 

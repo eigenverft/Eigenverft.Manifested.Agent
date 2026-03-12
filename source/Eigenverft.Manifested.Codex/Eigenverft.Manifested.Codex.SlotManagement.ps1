@@ -13,13 +13,14 @@ function Get-CodexManagerLayout {
     $localRootResolved = [System.IO.Path]::GetFullPath($LocalRoot)
 
     [pscustomobject]@{
-        SlotsRoot     = $slotsRootResolved
-        LocalRoot     = $localRootResolved
-        CacheRoot     = (Join-Path $localRootResolved 'cache')
-        NodeCacheRoot = (Join-Path $localRootResolved 'cache\node')
-        ToolsRoot     = (Join-Path $localRootResolved 'tools')
-        NodeToolsRoot = (Join-Path $localRootResolved 'tools\node')
-        StateFile     = (Join-Path $slotsRootResolved 'state.json')
+        SlotsRoot        = $slotsRootResolved
+        LocalRoot        = $localRootResolved
+        CacheRoot        = (Join-Path $localRootResolved 'cache')
+        NodeCacheRoot    = (Join-Path $localRootResolved 'cache\node')
+        VCRuntimeCacheRoot = (Join-Path $localRootResolved 'cache\vc-runtime')
+        ToolsRoot        = (Join-Path $localRootResolved 'tools')
+        NodeToolsRoot    = (Join-Path $localRootResolved 'tools\node')
+        StateFile        = (Join-Path $slotsRootResolved 'state.json')
     }
 }
 
@@ -94,6 +95,7 @@ function Initialize-CodexSlot {
         [ValidatePattern('^[A-Za-z0-9._-]+$')]
         [string]$Name = 'default',
 
+        [switch]$RefreshVCRuntime,
         [switch]$RefreshNode,
         [switch]$ForceCodex,
 
@@ -101,6 +103,7 @@ function Initialize-CodexSlot {
         [string]$LocalRoot = (Join-Path $env:LOCALAPPDATA 'CodexSlots')
     )
 
+    Ensure-VCRuntime -RefreshVCRuntime:$RefreshVCRuntime -LocalRoot $LocalRoot | Out-Null
     $runtime = Ensure-NodeRuntime -RefreshNode:$RefreshNode -LocalRoot $LocalRoot
 
     Install-CodexIntoSlot `
@@ -258,6 +261,8 @@ function Get-CodexState {
     $manager = Get-CodexManagerState -SlotsRoot $SlotsRoot -LocalRoot $LocalRoot
     $flavor = Get-NodeFlavor
     $cached = Get-LatestCachedNodeZip -Flavor $flavor -LocalRoot $LocalRoot
+    $cachedVCRuntime = Get-CachedVCRuntimeInstaller -LocalRoot $LocalRoot
+    $installedVCRuntime = Get-InstalledVCRuntime
 
     $resolvedNode = Get-Command node -ErrorAction SilentlyContinue
     $resolvedNpm = Get-Command npm -ErrorAction SilentlyContinue
@@ -275,21 +280,26 @@ function Get-CodexState {
     }
 
     [pscustomobject]@{
-        SlotsRoot         = $mgr.SlotsRoot
-        LocalRoot         = $mgr.LocalRoot
-        NodeCacheRoot     = $mgr.NodeCacheRoot
-        NodeToolsRoot     = $mgr.NodeToolsRoot
-        NodeFlavor        = $flavor
-        CachedNodeVersion = if ($cached) { $cached.Version } else { $null }
-        CachedNodeZip     = if ($cached) { $cached.Path } else { $null }
-        ActiveSlot        = $manager.ActiveSlot
-        ActiveNodeVersion = $manager.NodeVersion
-        ActiveNodeFlavor  = $manager.NodeFlavor
-        ActiveNodeHome    = $activeNodeHome
-        NodeOnPath        = if ($resolvedNode) { $resolvedNode.Source } else { $null }
-        NpmOnPath         = if ($resolvedNpm) { $resolvedNpm.Source } else { $null }
-        CodexOnPath       = if ($resolvedCodex) { $resolvedCodex.Source } else { $null }
-        ReadyToInit       = $true
-        ReadyToRun        = [bool]$resolvedCodex
+        SlotsRoot                = $mgr.SlotsRoot
+        LocalRoot                = $mgr.LocalRoot
+        NodeCacheRoot            = $mgr.NodeCacheRoot
+        VCRuntimeCacheRoot       = $mgr.VCRuntimeCacheRoot
+        NodeToolsRoot            = $mgr.NodeToolsRoot
+        NodeFlavor               = $flavor
+        CachedNodeVersion        = if ($cached) { $cached.Version } else { $null }
+        CachedNodeZip            = if ($cached) { $cached.Path } else { $null }
+        CachedVCRuntimeVersion   = if ($cachedVCRuntime) { $cachedVCRuntime.Version } else { $null }
+        CachedVCRuntimeInstaller = if ($cachedVCRuntime) { $cachedVCRuntime.Path } else { $null }
+        InstalledVCRuntime       = $installedVCRuntime.Installed
+        InstalledVCRuntimeVersion = $installedVCRuntime.Version
+        ActiveSlot               = $manager.ActiveSlot
+        ActiveNodeVersion        = $manager.NodeVersion
+        ActiveNodeFlavor         = $manager.NodeFlavor
+        ActiveNodeHome           = $activeNodeHome
+        NodeOnPath               = if ($resolvedNode) { $resolvedNode.Source } else { $null }
+        NpmOnPath                = if ($resolvedNpm) { $resolvedNpm.Source } else { $null }
+        CodexOnPath              = if ($resolvedCodex) { $resolvedCodex.Source } else { $null }
+        ReadyToInit              = $true
+        ReadyToRun               = [bool]$resolvedCodex
     }
 }

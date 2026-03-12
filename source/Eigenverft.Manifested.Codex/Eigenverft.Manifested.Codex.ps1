@@ -59,14 +59,32 @@ Get-NodeFlavor
 # Show the latest cached Node zip
 Get-LatestCachedNodeZip
 
+# Show the cached VC++ runtime bootstrapper
+Get-CachedVCRuntimeInstaller
+
+# Show the installed VC++ runtime
+Get-InstalledVCRuntime
+
 # Ensure a Node zip is present in cache
 Ensure-NodeZip
+
+# Ensure a VC++ redistributable bootstrapper is present in cache
+Ensure-VCRuntimeInstaller
 
 # Force refresh the cached Node zip
 Ensure-NodeZip -RefreshNode
 
+# Force refresh the cached VC++ redistributable bootstrapper
+Ensure-VCRuntimeInstaller -RefreshVCRuntime
+
 # Ensure the managed Node runtime is extracted and ready
 Ensure-NodeRuntime
+
+# Ensure the VC++ runtime prerequisite is installed and ready
+Ensure-VCRuntime
+
+# Force refresh the VC++ redistributable bootstrapper and install from it
+Ensure-VCRuntime -RefreshVCRuntime
 
 # Force refresh and re-extract the managed Node runtime
 Ensure-NodeRuntime -RefreshNode
