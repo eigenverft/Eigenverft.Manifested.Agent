@@ -1,8 +1,6 @@
 # Eigenverft.Manifested.Codex
 
-[![PowerShell Gallery Version](https://img.shields.io/powershellgallery/v/Eigenverft.Manifested.Codex?label=PSGallery&logo=powershell)](https://www.powershellgallery.com/packages/Eigenverft.Manifested.Codex)
-[![PowerShell Gallery Platform Support](https://img.shields.io/powershellgallery/p/Eigenverft.Manifested.Codex?logo=windows)](https://www.powershellgallery.com/packages/Eigenverft.Manifested.Codex)
-[![License](https://img.shields.io/github/license/eigenverft/Eigenverft.Manifested.Codex?logo=mit)](LICENSE)
+[![PowerShell Gallery Version](https://img.shields.io/powershellgallery/v/Eigenverft.Manifested.Codex?label=PSGallery&logo=powershell)](https://www.powershellgallery.com/packages/Eigenverft.Manifested.Codex) [![PowerShell Gallery Downloads](https://img.shields.io/powershellgallery/dt/Eigenverft.Manifested.Codex?label=Downloads&logo=powershell)](https://www.powershellgallery.com/packages/Eigenverft.Manifested.Codex) [![PowerShell Support](https://img.shields.io/badge/PowerShell-5.1%2B%20Desktop%2FCore-5391FE?logo=powershell&logoColor=white)](source/Eigenverft.Manifested.Codex/Eigenverft.Manifested.Codex.psd1) [![Build Status](https://img.shields.io/github/actions/workflow/status/eigenverft/Eigenverft.Manifested.Codex/cicd.yml?branch=main&label=build)](https://github.com/eigenverft/Eigenverft.Manifested.Codex/actions/workflows/cicd.yml) [![License](https://img.shields.io/github/license/eigenverft/Eigenverft.Manifested.Codex?logo=mit)](LICENSE)
 
 Windows-focused PowerShell module that provides a thin wrapper around the OpenAI Codex CLI for task execution, named sessions, and lightweight local state inspection.
 
