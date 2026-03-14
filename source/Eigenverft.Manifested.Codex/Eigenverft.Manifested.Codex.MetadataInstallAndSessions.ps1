@@ -2,135 +2,76 @@
     Eigenverft.Manifested.Codex.MetadataInstallAndSessions
 #>
 
-function Get-CodexManagerState {
+function Get-CodexLocalRoot {
     [CmdletBinding()]
     param(
-        [string]$SlotsRoot = (Join-Path $HOME '.codex-slots'),
         [string]$LocalRoot = (Join-Path $env:LOCALAPPDATA 'CodexSlots')
     )
 
-    $mgr = Get-CodexManagerLayout -SlotsRoot $SlotsRoot -LocalRoot $LocalRoot
+    return [System.IO.Path]::GetFullPath($LocalRoot)
+}
 
-    if (-not (Test-Path -LiteralPath $mgr.StateFile)) {
-        return [pscustomobject]@{
-            ActiveSlot   = $null
-            NodeVersion  = $null
-            NodeFlavor   = $null
-            UpdatedUtc   = $null
+function Get-CodexSessionStorePath {
+    [CmdletBinding()]
+    param(
+        [string]$LocalRoot = (Get-CodexLocalRoot)
+    )
+
+    return (Join-Path (Join-Path $LocalRoot 'sessions') 'named-sessions.json')
+}
+
+function Get-CodexSessionKey {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SessionName
+    )
+
+    return ($SessionName.Trim() -replace '\|', '_')
+}
+
+function Read-CodexSessionMap {
+    [CmdletBinding()]
+    param(
+        [string]$SessionStorePath = (Get-CodexSessionStorePath)
+    )
+
+    $sessionMap = @{}
+    if (-not (Test-Path -LiteralPath $SessionStorePath)) {
+        return $sessionMap
+    }
+
+    try {
+        $raw = Get-Content -LiteralPath $SessionStorePath -Raw
+        if (-not [string]::IsNullOrWhiteSpace($raw)) {
+            $obj = $raw | ConvertFrom-Json
+            foreach ($property in $obj.PSObject.Properties) {
+                $sessionMap[$property.Name] = $property.Value
+            }
         }
     }
-
-    try {
-        return (Get-Content -LiteralPath $mgr.StateFile -Raw | ConvertFrom-Json)
-    }
     catch {
-        return [pscustomobject]@{
-            ActiveSlot   = $null
-            NodeVersion  = $null
-            NodeFlavor   = $null
-            UpdatedUtc   = $null
-        }
+        throw "Failed to read session store: $SessionStorePath"
     }
+
+    return $sessionMap
 }
 
-function Get-CodexSlotMetadata {
-    [CmdletBinding()]
-    param(
-        [ValidatePattern('^[A-Za-z0-9._-]+$')]
-        [Parameter(Mandatory = $true)]
-        [string]$Name,
-
-        [string]$SlotsRoot = (Join-Path $HOME '.codex-slots'),
-        [string]$LocalRoot = (Join-Path $env:LOCALAPPDATA 'CodexSlots')
-    )
-
-    $slot = Get-CodexSlotLayout -Name $Name -SlotsRoot $SlotsRoot -LocalRoot $LocalRoot
-
-    if (-not (Test-Path -LiteralPath $slot.SlotMeta)) {
-        return $null
-    }
-
-    try {
-        return (Get-Content -LiteralPath $slot.SlotMeta -Raw | ConvertFrom-Json)
-    }
-    catch {
-        return $null
-    }
-}
-
-function Get-CodexPackageVersionFromSlot {
+function Write-CodexSessionMap {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$PackageJsonPath
+        [hashtable]$SessionMap,
+
+        [string]$SessionStorePath = (Get-CodexSessionStorePath)
     )
 
-    if (-not (Test-Path -LiteralPath $PackageJsonPath)) {
-        return $null
+    $sessionStoreRoot = Split-Path -Parent $SessionStorePath
+    if (-not (Test-Path -LiteralPath $sessionStoreRoot)) {
+        New-Item -ItemType Directory -Path $sessionStoreRoot -Force | Out-Null
     }
 
-    try {
-        return ((Get-Content -LiteralPath $PackageJsonPath -Raw | ConvertFrom-Json).version)
-    }
-    catch {
-        return $null
-    }
-}
-
-function Install-CodexIntoSlot {
-    [CmdletBinding()]
-    param(
-        [ValidatePattern('^[A-Za-z0-9._-]+$')]
-        [Parameter(Mandatory = $true)]
-        [string]$Name,
-
-        [Parameter(Mandatory = $true)]
-        [string]$NodeVersion,
-
-        [Parameter(Mandatory = $true)]
-        [string]$NodeFlavor,
-
-        [Parameter(Mandatory = $true)]
-        [string]$NpmCmd,
-
-        [switch]$ForceCodex,
-
-        [string]$SlotsRoot = (Join-Path $HOME '.codex-slots'),
-        [string]$LocalRoot = (Join-Path $env:LOCALAPPDATA 'CodexSlots')
-    )
-
-    $slot = Get-CodexSlotLayout -Name $Name -SlotsRoot $SlotsRoot -LocalRoot $LocalRoot
-    Ensure-CodexDirectory -Path $slot.SlotRoot
-    Ensure-CodexDirectory -Path $slot.NpmPrefix
-
-    $needsInstall = $ForceCodex -or -not (Test-Path -LiteralPath $slot.CodexCmd)
-
-    if ($needsInstall) {
-        Write-Host "Installing Codex CLI into slot '$Name'..."
-        & $NpmCmd install -g --prefix $slot.NpmPrefix ($script:CodexPackage + '@latest')
-    }
-
-    $codexVersion = Get-CodexPackageVersionFromSlot -PackageJsonPath $slot.PackageJson
-    if (-not $codexVersion) {
-        $codexVersion = 'installed'
-    }
-
-    Save-CodexSlotMetadata `
-        -Name $Name `
-        -NodeVersion $NodeVersion `
-        -NodeFlavor $NodeFlavor `
-        -CodexVersion $codexVersion `
-        -SlotsRoot $SlotsRoot `
-        -LocalRoot $LocalRoot
-
-    return [pscustomobject]@{
-        Name         = $Name
-        NodeVersion  = $NodeVersion
-        NodeFlavor   = $NodeFlavor
-        CodexVersion = $codexVersion
-        CodexCmd     = $slot.CodexCmd
-        NpmPrefix    = $slot.NpmPrefix
-    }
+    ($SessionMap | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $SessionStorePath -Encoding UTF8
 }
 
 function Resolve-CodexCommandPath {
@@ -143,7 +84,11 @@ function Resolve-CodexCommandPath {
     }
 
     if (-not $resolvedCodex) {
-        throw 'codex was not found on PATH. Activate a slot with codex-use or run codex-init.'
+        throw 'codex was not found on PATH. Install the Codex CLI or add it to PATH before using Eigenverft.Manifested.Codex.'
+    }
+
+    if ($resolvedCodex.PSObject.Properties['Path'] -and $resolvedCodex.Path) {
+        return $resolvedCodex.Path
     }
 
     return $resolvedCodex.Source
@@ -173,18 +118,36 @@ function Resolve-CodexDirectory {
     return [System.IO.Path]::GetFullPath($path)
 }
 
-function Get-CodexSessionStorePath {
+function Get-CodexState {
     [CmdletBinding()]
-    param(
-        [string]$LocalRoot = (Join-Path $env:LOCALAPPDATA 'CodexSlots')
-    )
+    param()
 
-    $dir = Join-Path $LocalRoot 'sessions'
-    if (-not (Test-Path -LiteralPath $dir)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $localRoot = Get-CodexLocalRoot
+    $sessionStorePath = Get-CodexSessionStorePath -LocalRoot $localRoot
+    $sessionStoreExists = Test-Path -LiteralPath $sessionStorePath
+    $sessionCount = 0
+
+    if ($sessionStoreExists) {
+        $sessionCount = @((Read-CodexSessionMap -SessionStorePath $sessionStorePath).Keys).Count
     }
 
-    return (Join-Path $dir 'named-sessions.json')
+    $codexCommandPath = $null
+    try {
+        $codexCommandPath = Resolve-CodexCommandPath
+    }
+    catch {
+        $codexCommandPath = $null
+    }
+
+    [pscustomobject]@{
+        LocalRoot          = $localRoot
+        SessionStorePath   = $sessionStorePath
+        SessionStoreExists = $sessionStoreExists
+        SessionCount       = $sessionCount
+        CodexCommandPath   = $codexCommandPath
+        CodexAvailable     = [bool]$codexCommandPath
+        ReadyToRun         = [bool]$codexCommandPath
+    }
 }
 
 function Get-CodexSession {
@@ -201,15 +164,6 @@ If SessionName is omitted, returns all stored sessions.
 .PARAMETER SessionName
 Optional session name to fetch.
 Alias: Session
-
-.EXAMPLE
-Get-CodexSession
-
-.EXAMPLE
-Get-CodexSession -SessionName foo99
-
-.EXAMPLE
-Get-CodexSession -Session foo99
 #>
     [CmdletBinding()]
     param(
@@ -217,8 +171,7 @@ Get-CodexSession -Session foo99
         [string]$SessionName
     )
 
-    $sessionStorePath = Join-Path $env:LOCALAPPDATA 'CodexSlots\sessions\named-sessions.json'
-
+    $sessionStorePath = Get-CodexSessionStorePath
     if (-not (Test-Path -LiteralPath $sessionStorePath)) {
         if ($PSBoundParameters.ContainsKey('SessionName')) {
             return $null
@@ -227,23 +180,10 @@ Get-CodexSession -Session foo99
         return @()
     }
 
-    $sessionMap = @{}
-
-    try {
-        $raw = Get-Content -LiteralPath $sessionStorePath -Raw
-        if (-not [string]::IsNullOrWhiteSpace($raw)) {
-            $obj = $raw | ConvertFrom-Json
-            foreach ($p in $obj.PSObject.Properties) {
-                $sessionMap[$p.Name] = $p.Value
-            }
-        }
-    }
-    catch {
-        throw "Failed to read session store: $sessionStorePath"
-    }
+    $sessionMap = Read-CodexSessionMap -SessionStorePath $sessionStorePath
 
     if ($PSBoundParameters.ContainsKey('SessionName')) {
-        $sessionKey = ($SessionName.Trim() -replace '\|', '_')
+        $sessionKey = Get-CodexSessionKey -SessionName $SessionName
 
         if (-not $sessionMap.ContainsKey($sessionKey)) {
             return $null
@@ -283,19 +223,6 @@ Deletes a named session from the local session store.
 
 This only removes the wrapper-side session mapping.
 It does not delete any Codex-internal session history.
-
-.PARAMETER SessionName
-Name of the session to remove.
-Alias: Session
-
-.PARAMETER Force
-Required switch to confirm deletion.
-
-.EXAMPLE
-Remove-CodexSession -SessionName foo99 -Force
-
-.EXAMPLE
-Remove-CodexSession -Session foo99 -Force
 #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -310,36 +237,21 @@ Remove-CodexSession -Session foo99 -Force
         throw "Pass -Force to remove session '$SessionName'."
     }
 
-    $sessionStorePath = Join-Path $env:LOCALAPPDATA 'CodexSlots\sessions\named-sessions.json'
-
+    $sessionStorePath = Get-CodexSessionStorePath
     if (-not (Test-Path -LiteralPath $sessionStorePath)) {
         return $false
     }
 
-    $sessionMap = @{}
-
-    try {
-        $raw = Get-Content -LiteralPath $sessionStorePath -Raw
-        if (-not [string]::IsNullOrWhiteSpace($raw)) {
-            $obj = $raw | ConvertFrom-Json
-            foreach ($p in $obj.PSObject.Properties) {
-                $sessionMap[$p.Name] = $p.Value
-            }
-        }
-    }
-    catch {
-        throw "Failed to read session store: $sessionStorePath"
-    }
-
-    $sessionKey = ($SessionName.Trim() -replace '\|', '_')
+    $sessionMap = Read-CodexSessionMap -SessionStorePath $sessionStorePath
+    $sessionKey = Get-CodexSessionKey -SessionName $SessionName
 
     if (-not $sessionMap.ContainsKey($sessionKey)) {
         return $false
     }
 
-    if ($PSCmdlet.ShouldProcess($sessionKey, "Remove stored Codex session")) {
+    if ($PSCmdlet.ShouldProcess($sessionKey, 'Remove stored Codex session')) {
         [void]$sessionMap.Remove($sessionKey)
-        ($sessionMap | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $sessionStorePath -Encoding UTF8
+        Write-CodexSessionMap -SessionMap $sessionMap -SessionStorePath $sessionStorePath
         return $true
     }
 
@@ -356,19 +268,6 @@ Sets LastDirectory for an existing named session in the local session store.
 
 This does not change Codex-internal session state directly.
 It only changes the wrapper's remembered working directory.
-
-.PARAMETER SessionName
-Name of the session to update.
-Alias: Session
-
-.PARAMETER Directory
-Directory to store as LastDirectory.
-
-.EXAMPLE
-Set-CodexSessionDirectory -SessionName foo99 -Directory C:\temp
-
-.EXAMPLE
-Set-CodexSessionDirectory -Session foo99 -Directory D:\project
 #>
     [CmdletBinding()]
     param(
@@ -380,29 +279,15 @@ Set-CodexSessionDirectory -Session foo99 -Directory D:\project
         [string]$Directory
     )
 
-    $sessionStorePath = Join-Path $env:LOCALAPPDATA 'CodexSlots\sessions\named-sessions.json'
+    $sessionStorePath = Get-CodexSessionStorePath
     $resolvedDirectory = Resolve-CodexDirectory -Directory $Directory
 
     if (-not (Test-Path -LiteralPath $sessionStorePath)) {
         throw "Session store was not found: $sessionStorePath"
     }
 
-    $sessionMap = @{}
-
-    try {
-        $raw = Get-Content -LiteralPath $sessionStorePath -Raw
-        if (-not [string]::IsNullOrWhiteSpace($raw)) {
-            $obj = $raw | ConvertFrom-Json
-            foreach ($p in $obj.PSObject.Properties) {
-                $sessionMap[$p.Name] = $p.Value
-            }
-        }
-    }
-    catch {
-        throw "Failed to read session store: $sessionStorePath"
-    }
-
-    $sessionKey = ($SessionName.Trim() -replace '\|', '_')
+    $sessionMap = Read-CodexSessionMap -SessionStorePath $sessionStorePath
+    $sessionKey = Get-CodexSessionKey -SessionName $SessionName
 
     if (-not $sessionMap.ContainsKey($sessionKey)) {
         throw "Session '$SessionName' was not found."
@@ -417,7 +302,7 @@ Set-CodexSessionDirectory -Session foo99 -Directory D:\project
         UpdatedUtc    = [DateTime]::UtcNow.ToString('o')
     }
 
-    ($sessionMap | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $sessionStorePath -Encoding UTF8
+    Write-CodexSessionMap -SessionMap $sessionMap -SessionStorePath $sessionStorePath
 
     return [pscustomobject]@{
         SessionName   = [string]$sessionMap[$sessionKey].SessionName
@@ -437,12 +322,6 @@ Deletes the local session store file used by the Codex PowerShell wrapper.
 
 This only removes wrapper-side mappings.
 It does not delete Codex-internal session history.
-
-.PARAMETER Force
-Required switch to confirm deletion.
-
-.EXAMPLE
-Clear-CodexSessions -Force
 #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -453,8 +332,7 @@ Clear-CodexSessions -Force
         throw 'Pass -Force to clear all stored sessions.'
     }
 
-    $sessionStorePath = Join-Path $env:LOCALAPPDATA 'CodexSlots\sessions\named-sessions.json'
-
+    $sessionStorePath = Get-CodexSessionStorePath
     if (-not (Test-Path -LiteralPath $sessionStorePath)) {
         return $false
     }
@@ -513,63 +391,6 @@ OutputLastMessage behavior:
 - this wrapper does NOT pass --output-last-message to Codex
 - when JSON output is available, it extracts the last agent message itself
   and writes it to a local file
-
-.PARAMETER Prompt
-Prompt sent to Codex.
-
-.PARAMETER Directory
-Optional directory.
-If omitted and SessionName is present, LastDirectory is used if available.
-Otherwise current shell directory is used.
-
-.PARAMETER SessionName
-Optional wrapper-level session name.
-Alias: Session
-
-.PARAMETER AllowDangerous
-If true, uses --dangerously-bypass-approvals-and-sandbox.
-
-.PARAMETER Sandbox
-Sandbox mode for initial exec only when AllowDangerous is false.
-
-.PARAMETER AskForApproval
-Reserved for later expansion. Not currently used because your current exec path
-is focused on dangerous/full capability mode by default.
-
-.PARAMETER EnforceRepoCheck
-If specified, do NOT add --skip-git-repo-check.
-
-.PARAMETER Json
-If true, adds --json.
-Named sessions force JSON on so thread.started can be captured.
-
-.PARAMETER OutputLastMessage
-Optional wrapper-side file path written with the last parsed agent message.
-This is NOT forwarded to Codex.
-
-.PARAMETER Color
-Color mode for initial exec only.
-
-.PARAMETER Ephemeral
-If true, adds --ephemeral.
-Default:
-- no SessionName => $true
-- with SessionName => $false
-
-.PARAMETER Model
-Optional model name passed as --model.
-
-.PARAMETER AddDir
-Additional writable directories for INITIAL exec only.
-
-.EXAMPLE
-Invoke-CodexTask -Prompt "read the dir and output the first file found" -Directory "C:\temp" -Session "foo99"
-
-.EXAMPLE
-Invoke-CodexTask -Prompt "read the dir and output the first file found" -Directory "D:\other" -Session "foo99"
-
-.EXAMPLE
-Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
 #>
     [CmdletBinding()]
     param(
@@ -620,8 +441,8 @@ Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
         $Ephemeral = [string]::IsNullOrWhiteSpace($SessionName)
     }
 
-    $sessionStoreRoot = Join-Path $env:LOCALAPPDATA 'CodexSlots\sessions'
-    $sessionStorePath = Join-Path $sessionStoreRoot 'named-sessions.json'
+    $sessionStorePath = Get-CodexSessionStorePath
+    $sessionStoreRoot = Split-Path -Parent $sessionStorePath
 
     if (-not (Test-Path -LiteralPath $sessionStoreRoot)) {
         New-Item -ItemType Directory -Path $sessionStoreRoot -Force | Out-Null
@@ -633,8 +454,8 @@ Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
             $raw = Get-Content -LiteralPath $sessionStorePath -Raw
             if (-not [string]::IsNullOrWhiteSpace($raw)) {
                 $obj = $raw | ConvertFrom-Json
-                foreach ($p in $obj.PSObject.Properties) {
-                    $sessionMap[$p.Name] = $p.Value
+                foreach ($property in $obj.PSObject.Properties) {
+                    $sessionMap[$property.Name] = $property.Value
                 }
             }
         }
@@ -648,7 +469,7 @@ Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
     $effectiveDirectory = $currentDirectory
 
     if (-not [string]::IsNullOrWhiteSpace($SessionName)) {
-        $sessionKey = ($SessionName.Trim() -replace '\|', '_')
+        $sessionKey = Get-CodexSessionKey -SessionName $SessionName
 
         if ($sessionMap.ContainsKey($sessionKey)) {
             $existingSession = $sessionMap[$sessionKey]
@@ -664,13 +485,8 @@ Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
             $effectiveDirectory = $currentDirectory
         }
     }
-    else {
-        if ($directoryProvided) {
-            $effectiveDirectory = $requestedDirectory
-        }
-        else {
-            $effectiveDirectory = $currentDirectory
-        }
+    elseif ($directoryProvided) {
+        $effectiveDirectory = $requestedDirectory
     }
 
     $canResume = [bool](
@@ -706,8 +522,6 @@ Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
     $cargs = New-Object System.Collections.Generic.List[string]
 
     if ($canResume) {
-        # codex exec resume [OPTIONS] [SESSION_ID] [PROMPT]
-        # No --cd here according to the local help you pasted.
         [void]$cargs.Add('exec')
         [void]$cargs.Add('resume')
 
@@ -736,7 +550,6 @@ Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
         [void]$cargs.Add($Prompt)
     }
     else {
-        # codex exec [OPTIONS] [PROMPT]
         [void]$cargs.Add('exec')
 
         [void]$cargs.Add('--cd')
@@ -809,7 +622,7 @@ Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
                             UpdatedUtc    = [DateTime]::UtcNow.ToString('o')
                         }
 
-                        ($sessionMap | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $sessionStorePath -Encoding UTF8
+                        Write-CodexSessionMap -SessionMap $sessionMap -SessionStorePath $sessionStorePath
                         $existingSession = $sessionMap[$sessionKey]
                     }
 
@@ -830,7 +643,7 @@ Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
                     UpdatedUtc    = [DateTime]::UtcNow.ToString('o')
                 }
 
-                ($sessionMap | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $sessionStorePath -Encoding UTF8
+                Write-CodexSessionMap -SessionMap $sessionMap -SessionStorePath $sessionStorePath
                 $existingSession = $sessionMap[$sessionKey]
             }
 
@@ -850,7 +663,7 @@ Invoke-CodexTask -Prompt "please repeat both filenames" -Session "foo99"
                     UpdatedUtc    = [DateTime]::UtcNow.ToString('o')
                 }
 
-                ($sessionMap | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $sessionStorePath -Encoding UTF8
+                Write-CodexSessionMap -SessionMap $sessionMap -SessionStorePath $sessionStorePath
                 $existingSession = $sessionMap[$sessionKey]
             }
         }
