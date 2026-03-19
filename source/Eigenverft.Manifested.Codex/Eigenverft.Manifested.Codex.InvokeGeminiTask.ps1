@@ -103,7 +103,7 @@ function ConvertFrom-GeminiJsonLine {
     }
 
     try {
-        return ($text | ConvertFrom-Json -Depth 100)
+        return ($text | ConvertFrom-Json)
     }
     catch {
         return $null
@@ -636,7 +636,7 @@ the wrapper starts a fresh Gemini session instead of forcing a stale resume id.
             Write-Host ($rawStructuredOutput.TrimEnd("`r", "`n"))
 
             try {
-                $payload = $rawStructuredOutput | ConvertFrom-Json -Depth 100
+                $payload = $rawStructuredOutput | ConvertFrom-Json
 
                 if ($payload.PSObject.Properties['session_id'] -and $payload.session_id) {
                     $observedSessionId = [string]$payload.session_id
