@@ -85,6 +85,142 @@ function Resolve-GeminiCommandPath {
     throw 'gemini was not found on PATH. Install the Gemini CLI or add it to PATH before using Invoke-GeminiTask.'
 }
 
+function Convert-GeminiProcessOutputToLines {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [string]$Text
+    )
+
+    if ([string]::IsNullOrEmpty($Text)) {
+        return @()
+    }
+
+    $lines = [regex]::Split($Text, "\r?\n")
+
+    if ($lines.Count -gt 0 -and [string]::IsNullOrEmpty($lines[$lines.Count - 1])) {
+        $lines = @($lines | Select-Object -First ($lines.Count - 1))
+    }
+
+    return @($lines)
+}
+
+function ConvertTo-GeminiProcessArgument {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [string]$Value
+    )
+
+    if ($null -eq $Value) {
+        return '""'
+    }
+
+    if ($Value.Length -eq 0) {
+        return '""'
+    }
+
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
+
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    $pendingBackslashes = 0
+
+    foreach ($char in $Value.ToCharArray()) {
+        if ($char -eq '\') {
+            $pendingBackslashes++
+            continue
+        }
+
+        if ($char -eq '"') {
+            if ($pendingBackslashes -gt 0) {
+                [void]$builder.Append(('\' * ($pendingBackslashes * 2)))
+                $pendingBackslashes = 0
+            }
+
+            [void]$builder.Append('\"')
+            continue
+        }
+
+        if ($pendingBackslashes -gt 0) {
+            [void]$builder.Append(('\' * $pendingBackslashes))
+            $pendingBackslashes = 0
+        }
+
+        [void]$builder.Append($char)
+    }
+
+    if ($pendingBackslashes -gt 0) {
+        [void]$builder.Append(('\' * ($pendingBackslashes * 2)))
+    }
+
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function ConvertTo-GeminiProcessArgumentString {
+    [CmdletBinding()]
+    param(
+        [string[]]$Arguments
+    )
+
+    return ((@($Arguments) | ForEach-Object { ConvertTo-GeminiProcessArgument -Value $_ }) -join ' ')
+}
+
+function Invoke-GeminiProcess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$GeminiCommandPath,
+
+        [string[]]$Arguments,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Directory
+    )
+
+    $stdoutPath = Join-Path $env:TEMP ("gemini-stdout-{0}.log" -f ([Guid]::NewGuid().ToString('N')))
+    $stderrPath = Join-Path $env:TEMP ("gemini-stderr-{0}.log" -f ([Guid]::NewGuid().ToString('N')))
+
+    $argumentString = ConvertTo-GeminiProcessArgumentString -Arguments $Arguments
+
+    try {
+        $process = Start-Process `
+            -FilePath $GeminiCommandPath `
+            -ArgumentList $argumentString `
+            -WorkingDirectory $Directory `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath `
+            -Wait `
+            -PassThru `
+            -NoNewWindow
+
+        $stdoutRaw = ''
+        $stderrRaw = ''
+
+        if (Test-Path -LiteralPath $stdoutPath) {
+            $stdoutRaw = Get-Content -LiteralPath $stdoutPath -Raw
+        }
+
+        if (Test-Path -LiteralPath $stderrPath) {
+            $stderrRaw = Get-Content -LiteralPath $stderrPath -Raw
+        }
+
+        [pscustomobject]@{
+            ExitCode    = [int]$process.ExitCode
+            StdOutRaw   = [string]$stdoutRaw
+            StdErrRaw   = [string]$stderrRaw
+            StdOutLines = @(Convert-GeminiProcessOutputToLines -Text $stdoutRaw)
+            StdErrLines = @(Convert-GeminiProcessOutputToLines -Text $stderrRaw)
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Get-GeminiSessionListing {
     [CmdletBinding()]
     param(
@@ -95,26 +231,11 @@ function Get-GeminiSessionListing {
         [string]$Directory
     )
 
-    $outputLines = @()
-    $exitCode = 0
-
-    try {
-        Push-Location -LiteralPath $Directory
-        $global:LASTEXITCODE = 0
-        $outputLines = @(& $GeminiCommandPath '--list-sessions' 2>&1)
-        $exitCode = $global:LASTEXITCODE
-    }
-    catch {
-        $outputLines = @([string]$_)
-        $exitCode = 1
-    }
-    finally {
-        Pop-Location
-    }
+    $invocation = Invoke-GeminiProcess -GeminiCommandPath $GeminiCommandPath -Arguments @('--list-sessions') -Directory $Directory
 
     $sessionIds = New-Object System.Collections.Generic.List[string]
 
-    foreach ($line in $outputLines) {
+    foreach ($line in @($invocation.StdOutLines)) {
         $text = [string]$line
         $match = [regex]::Match($text, '\[(?<id>[^\]]+)\]')
 
@@ -124,10 +245,10 @@ function Get-GeminiSessionListing {
     }
 
     [pscustomobject]@{
-        Succeeded  = ($exitCode -eq 0)
-        ExitCode   = $exitCode
+        Succeeded  = ($invocation.ExitCode -eq 0)
+        ExitCode   = $invocation.ExitCode
         SessionIds = @($sessionIds | Select-Object -Unique)
-        Lines      = @($outputLines | ForEach-Object { [string]$_ })
+        Lines      = @($invocation.StdOutLines + $invocation.StdErrLines | ForEach-Object { [string]$_ })
     }
 }
 
@@ -313,83 +434,80 @@ the wrapper starts a fresh Gemini session instead of forcing a stale resume id.
     $exitCode = 0
     $assistantMessageBuilder = New-Object System.Text.StringBuilder
 
-    try {
-        Push-Location -LiteralPath $effectiveDirectory
+    $invocation = Invoke-GeminiProcess -GeminiCommandPath $geminiCmd -Arguments $argArray -Directory $effectiveDirectory
+    $exitCode = $invocation.ExitCode
 
-        if ($effectiveOutputFormat -eq 'stream-json') {
-            $global:LASTEXITCODE = 0
-            $outputLines = @(& $geminiCmd @argArray 2>&1)
-            $exitCode = $global:LASTEXITCODE
+    if ($effectiveOutputFormat -eq 'stream-json') {
+        foreach ($line in @($invocation.StdErrLines + $invocation.StdOutLines)) {
+            Write-Host ([string]$line)
+        }
 
-            foreach ($line in $outputLines) {
-                $text = [string]$line
-                Write-Host $text
+        foreach ($line in @($invocation.StdOutLines)) {
+            $text = [string]$line
 
-                try {
-                    $evt = $text | ConvertFrom-Json -Depth 100
+            try {
+                $evt = $text | ConvertFrom-Json -Depth 100
 
-                    if ($evt.type -eq 'init' -and $evt.session_id) {
-                        $observedSessionId = [string]$evt.session_id
+                if ($evt.type -eq 'init' -and $evt.session_id) {
+                    $observedSessionId = [string]$evt.session_id
+                }
+
+                if ($evt.type -eq 'message' -and $evt.role -eq 'assistant' -and $evt.content) {
+                    if ($evt.PSObject.Properties['delta'] -and [bool]$evt.delta) {
+                        [void]$assistantMessageBuilder.Append([string]$evt.content)
                     }
-
-                    if ($evt.type -eq 'message' -and $evt.role -eq 'assistant' -and $evt.content) {
-                        if ($evt.PSObject.Properties['delta'] -and [bool]$evt.delta) {
-                            [void]$assistantMessageBuilder.Append([string]$evt.content)
-                        }
-                        elseif ($assistantMessageBuilder.Length -eq 0) {
-                            [void]$assistantMessageBuilder.Append([string]$evt.content)
-                        }
-                    }
-
-                    if ($evt.type -eq 'result' -and $evt.error -and $evt.error.message) {
-                        $structuredErrorMessage = [string]$evt.error.message
+                    elseif ($assistantMessageBuilder.Length -eq 0) {
+                        [void]$assistantMessageBuilder.Append([string]$evt.content)
                     }
                 }
-                catch {
-                    # Ignore non-JSON lines.
+
+                if ($evt.type -eq 'result' -and $evt.error -and $evt.error.message) {
+                    $structuredErrorMessage = [string]$evt.error.message
                 }
             }
-
-            if ($assistantMessageBuilder.Length -gt 0) {
-                $lastAgentMessage = $assistantMessageBuilder.ToString()
+            catch {
+                # Ignore non-JSON lines.
             }
         }
-        elseif ($effectiveOutputFormat -eq 'json') {
-            $global:LASTEXITCODE = 0
-            $rawStructuredOutput = (& $geminiCmd @argArray 2>&1 | Out-String)
-            $exitCode = $global:LASTEXITCODE
 
-            if (-not [string]::IsNullOrWhiteSpace($rawStructuredOutput)) {
-                Write-Host ($rawStructuredOutput.TrimEnd("`r", "`n"))
-
-                try {
-                    $payload = $rawStructuredOutput | ConvertFrom-Json -Depth 100
-
-                    if ($payload.PSObject.Properties['session_id'] -and $payload.session_id) {
-                        $observedSessionId = [string]$payload.session_id
-                    }
-
-                    if ($payload.PSObject.Properties['response'] -and $payload.response) {
-                        $lastAgentMessage = [string]$payload.response
-                    }
-
-                    if ($payload.PSObject.Properties['error'] -and $payload.error -and $payload.error.message) {
-                        $structuredErrorMessage = [string]$payload.error.message
-                    }
-                }
-                catch {
-                    # Ignore invalid JSON payloads.
-                }
-            }
-        }
-        else {
-            $global:LASTEXITCODE = 0
-            & $geminiCmd @argArray
-            $exitCode = $global:LASTEXITCODE
+        if ($assistantMessageBuilder.Length -gt 0) {
+            $lastAgentMessage = $assistantMessageBuilder.ToString()
         }
     }
-    finally {
-        Pop-Location
+    elseif ($effectiveOutputFormat -eq 'json') {
+        foreach ($line in @($invocation.StdErrLines)) {
+            Write-Host ([string]$line)
+        }
+
+        $rawStructuredOutput = [string]$invocation.StdOutRaw
+
+        if (-not [string]::IsNullOrWhiteSpace($rawStructuredOutput)) {
+            Write-Host ($rawStructuredOutput.TrimEnd("`r", "`n"))
+
+            try {
+                $payload = $rawStructuredOutput | ConvertFrom-Json -Depth 100
+
+                if ($payload.PSObject.Properties['session_id'] -and $payload.session_id) {
+                    $observedSessionId = [string]$payload.session_id
+                }
+
+                if ($payload.PSObject.Properties['response'] -and $payload.response) {
+                    $lastAgentMessage = [string]$payload.response
+                }
+
+                if ($payload.PSObject.Properties['error'] -and $payload.error -and $payload.error.message) {
+                    $structuredErrorMessage = [string]$payload.error.message
+                }
+            }
+            catch {
+                # Ignore invalid JSON payloads.
+            }
+        }
+    }
+    else {
+        foreach ($line in @($invocation.StdErrLines + $invocation.StdOutLines)) {
+            Write-Host ([string]$line)
+        }
     }
 
     if ($exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($SessionName)) {
