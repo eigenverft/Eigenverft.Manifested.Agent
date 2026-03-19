@@ -6,3 +6,4 @@
 . "$PSScriptRoot\Eigenverft.Manifested.Agent\Eigenverft.Manifested.Agent.ps1"
 . "$PSScriptRoot\Eigenverft.Manifested.Agent\Eigenverft.Manifested.Agent.InvokeCodexTask.ps1"
 . "$PSScriptRoot\Eigenverft.Manifested.Agent\Eigenverft.Manifested.Agent.InvokeGeminiTask.ps1"
+. "$PSScriptRoot\Eigenverft.Manifested.Agent\Eigenverft.Manifested.Agent.InvokeQwenTask.ps1"

@@ -2,15 +2,16 @@
 
 [![PowerShell Gallery Version](https://img.shields.io/powershellgallery/v/Eigenverft.Manifested.Agent?label=PSGallery&logo=powershell)](https://www.powershellgallery.com/packages/Eigenverft.Manifested.Agent) [![PowerShell Gallery Downloads](https://img.shields.io/powershellgallery/dt/Eigenverft.Manifested.Agent?label=Downloads&logo=powershell)](https://www.powershellgallery.com/packages/Eigenverft.Manifested.Agent) [![PowerShell Support](https://img.shields.io/badge/PowerShell-5.1%2B%20Desktop%2FCore-5391FE?logo=powershell&logoColor=white)](source/Eigenverft.Manifested.Agent/Eigenverft.Manifested.Agent.psd1) [![Build Status](https://img.shields.io/github/actions/workflow/status/eigenverft/Eigenverft.Manifested.Agent/cicd.yml?branch=main&label=build)](https://github.com/eigenverft/Eigenverft.Manifested.Agent/actions/workflows/cicd.yml) [![License](https://img.shields.io/github/license/eigenverft/Eigenverft.Manifested.Agent?logo=mit)](LICENSE)
 
-Windows-focused PowerShell module that provides thin wrappers around agent CLIs, including the OpenAI Codex CLI and experimental Gemini CLI task execution, named sessions, and lightweight local state inspection.
+Windows-focused PowerShell module that provides thin wrappers around agent CLIs, including the OpenAI Codex CLI plus experimental Gemini and Qwen task execution, named sessions, and lightweight local state inspection.
 
 ## 🎯 Motivation
 
-Eigenverft.Manifested.Agent exists to put agent CLIs like Codex and Gemini inside a controllable PowerShell wrapper, so agent runs can be steered from scripts, jobs, and repeatable tooling instead of only by hand. The goal is simple: make sandboxed, programmable agentic work practical, with enough structure to automate tasks, preserve context, and reliably continue where a run left off.
+Eigenverft.Manifested.Agent exists to put agent CLIs like Codex, Gemini, and Qwen inside a controllable PowerShell wrapper, so agent runs can be steered from scripts, jobs, and repeatable tooling instead of only by hand. The goal is simple: make sandboxed, programmable agentic work practical, with enough structure to automate tasks, preserve context, and reliably continue where a run left off.
 
 🚀 **Key Features:**
 - Wraps `codex exec` and `codex exec resume` for repeatable PowerShell-driven runs
 - Adds experimental `Invoke-GeminiTask` support for Gemini CLI headless runs
+- Adds experimental `Invoke-QwenTask` support for Qwen CLI headless runs
 - Persists named wrapper sessions in `%LOCALAPPDATA%\Eigenverft.Manifested.Agent\sessions\named-sessions.json`
 - Tracks the last working directory per named session
 - Captures the last agent message from JSON output for lightweight inspection
@@ -24,7 +25,8 @@ Eigenverft.Manifested.Agent exists to put agent CLIs like Codex and Gemini insid
 - PowerShell 5.1 or newer
 - A working `codex` or `codex.cmd` on `PATH` if you use the Codex commands
 - A working `gemini`, `gemini.cmd`, or `gemini.ps1` on `PATH` if you use `Invoke-GeminiTask`
-- Any Codex CLI or Gemini CLI authentication/account setup required by your environment
+- A working `qwen`, `qwen.cmd`, or `qwen.ps1` on `PATH` if you use `Invoke-QwenTask`
+- Any Codex CLI, Gemini CLI, or Qwen CLI authentication/account setup required by your environment
 
 ---
 
@@ -70,6 +72,9 @@ Invoke-CodexTask -Prompt "list the first file you see" -Directory "C:\work"
 
 # Experimental Gemini one-shot task in the current directory
 Invoke-GeminiTask -Prompt "summarize this repository"
+
+# Experimental Qwen one-shot task in the current directory
+Invoke-QwenTask -Prompt "summarize this repository"
 ```
 
 ### 🔁 Named Sessions
@@ -92,6 +97,16 @@ Invoke-GeminiTask -Prompt "read the repo and remember context" -Directory "C:\wo
 Invoke-GeminiTask -Prompt "apply the requested change" -SessionName "gemini-repo1"
 ```
 
+### 🧠 Experimental Qwen Sessions
+
+```powershell
+# Start or continue a named Qwen wrapper session
+Invoke-QwenTask -Prompt "read the repo and remember context" -Directory "C:\work\repo" -SessionName "qwen-repo1"
+
+# Continue without respecifying the directory
+Invoke-QwenTask -Prompt "apply the requested change" -SessionName "qwen-repo1"
+```
+
 ---
 
 ## 📚 Command Reference
@@ -103,6 +118,7 @@ Invoke-GeminiTask -Prompt "apply the requested change" -SessionName "gemini-repo
 - `Get-CodexVersion` Resolve the available `codex` command and return version information.
 - `Invoke-CodexTask` Run a one-shot Codex task or resume a named wrapper session.
 - `Invoke-GeminiTask` Run an experimental Gemini headless task or resume a named wrapper session backed by Gemini session ids.
+- `Invoke-QwenTask` Run an experimental Qwen headless task or resume a named wrapper session backed by Qwen session ids.
 
 ### 🧭 State & Path Helpers
 
@@ -152,6 +168,11 @@ Default local state path:
 - Before resuming a named Gemini session, the wrapper runs `gemini --list-sessions` in the effective directory and starts a fresh session if the stored Gemini id is no longer listed.
 - `Invoke-GeminiTask` uses `--approval-mode yolo` when `-AllowDangerous:$true` and `--sandbox` when `-AllowDangerous:$false`.
 - Gemini trust, auth, and session availability remain controlled by the Gemini CLI itself, so wrapper resumes are best-effort if the native session state changes outside PowerShell.
+- `Invoke-QwenTask` is experimental and intentionally keeps a smaller public surface than the Codex wrapper.
+- Qwen named sessions are stored separately at `%LOCALAPPDATA%\Eigenverft.Manifested.Agent\sessions\named-qwen-sessions.json`.
+- `Invoke-QwenTask` uses `--output-format stream-json` for structured runs so it can capture the Qwen `session_id` and final assistant message from streamed events.
+- `Invoke-QwenTask` always uses `--approval-mode yolo` to stay non-interactive for automation, and adds `--sandbox` when `-AllowDangerous:$false`.
+- Qwen named-session resumes fail fast if the stored Qwen session id cannot be resumed.
 
 ## 📄 License
 
