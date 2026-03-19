@@ -31,7 +31,7 @@ CompanyName = 'Eigenverft'
 Copyright = 'Copyright (c) 2026 Eigenverft'
 
 # Description of the functionality provided by this module
-Description = 'Windows-focused PowerShell module that provides thin wrappers around agent CLIs, including the OpenAI Codex CLI and experimental Google Gemini CLI task flows, named sessions, and lightweight local state inspection.'
+Description = 'Windows-focused PowerShell module that wraps agent CLIs like Codex and Gemini for task execution, named sessions, and lightweight local state inspection.'
 
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '5.1'
@@ -115,7 +115,7 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        Tags = @('Eigenverft', 'Manifested', 'Agent', 'Codex', 'Gemini', 'PowerShell', 'OpenAI', 'CLI', 'Windows')
+        Tags = @('Eigenverft', 'Manifested', 'Agent', 'Codex', 'Gemini', 'PowerShell', 'PowerShellModule', 'OpenAI', 'TaskAutomation', 'SessionManagement', 'Windows')
 
         # A URL to the license for this module.
         LicenseUri = 'https://github.com/eigenverft/Eigenverft.Manifested.Agent/blob/main/LICENSE'
@@ -127,7 +127,7 @@ PrivateData = @{
         IconUri = 'https://raw.githubusercontent.com/eigenverft/Eigenverft.Manifested.Agent/main/resources/evt-logo_on_light_border_128x128.png'
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'Renamed the module package to Eigenverft.Manifested.Agent while preserving the existing Codex task command surface and Gemini task support.'
+        ReleaseNotes = 'Aligned module metadata with the Eigenverft.Manifested.Agent identity while preserving the existing Codex and Gemini task command surface.'
 
         # Prerelease string of this module
         Prerelease = ''
