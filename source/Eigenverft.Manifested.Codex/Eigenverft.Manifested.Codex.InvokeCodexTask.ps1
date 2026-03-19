@@ -1,5 +1,5 @@
 <#
-    Eigenverft.Manifested.Codex.MetadataInstallAndSessions
+    Eigenverft.Manifested.Codex.InvokeCodexTask
 #>
 
 function Get-CodexLocalRoot {

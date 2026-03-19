@@ -2,7 +2,7 @@
 
 [![PowerShell Gallery Version](https://img.shields.io/powershellgallery/v/Eigenverft.Manifested.Codex?label=PSGallery&logo=powershell)](https://www.powershellgallery.com/packages/Eigenverft.Manifested.Codex) [![PowerShell Gallery Downloads](https://img.shields.io/powershellgallery/dt/Eigenverft.Manifested.Codex?label=Downloads&logo=powershell)](https://www.powershellgallery.com/packages/Eigenverft.Manifested.Codex) [![PowerShell Support](https://img.shields.io/badge/PowerShell-5.1%2B%20Desktop%2FCore-5391FE?logo=powershell&logoColor=white)](source/Eigenverft.Manifested.Codex/Eigenverft.Manifested.Codex.psd1) [![Build Status](https://img.shields.io/github/actions/workflow/status/eigenverft/Eigenverft.Manifested.Codex/cicd.yml?branch=main&label=build)](https://github.com/eigenverft/Eigenverft.Manifested.Codex/actions/workflows/cicd.yml) [![License](https://img.shields.io/github/license/eigenverft/Eigenverft.Manifested.Codex?logo=mit)](LICENSE)
 
-Windows-focused PowerShell module that provides a thin wrapper around the OpenAI Codex CLI for task execution, named sessions, and lightweight local state inspection.
+Windows-focused PowerShell module that provides a thin wrapper around the OpenAI Codex CLI, plus experimental Gemini CLI task execution, named sessions, and lightweight local state inspection.
 
 ## 🎯 Motivation
 
@@ -10,6 +10,7 @@ Eigenverft.Manifested.Codex exists to put the Codex CLI inside a controllable Po
 
 🚀 **Key Features:**
 - Wraps `codex exec` and `codex exec resume` for repeatable PowerShell-driven runs
+- Adds experimental `Invoke-GeminiTask` support for Gemini CLI headless runs
 - Persists named wrapper sessions in `%LOCALAPPDATA%\CodexSlots\sessions\named-sessions.json`
 - Tracks the last working directory per named session
 - Captures the last agent message from JSON output for lightweight inspection
@@ -21,8 +22,9 @@ Eigenverft.Manifested.Codex exists to put the Codex CLI inside a controllable Po
 
 - Windows
 - PowerShell 5.1 or newer
-- A working `codex` or `codex.cmd` on `PATH`
-- Any Codex CLI authentication or account setup required by your environment
+- A working `codex` or `codex.cmd` on `PATH` if you use the Codex commands
+- A working `gemini`, `gemini.cmd`, or `gemini.ps1` on `PATH` if you use `Invoke-GeminiTask`
+- Any Codex CLI or Gemini CLI authentication/account setup required by your environment
 
 ---
 
@@ -65,6 +67,9 @@ Invoke-CodexTask -Prompt "summarize this repository"
 
 # One-shot task in a specific directory
 Invoke-CodexTask -Prompt "list the first file you see" -Directory "C:\work"
+
+# Experimental Gemini one-shot task in the current directory
+Invoke-GeminiTask -Prompt "summarize this repository"
 ```
 
 ### 🔁 Named Sessions
@@ -77,6 +82,16 @@ Invoke-CodexTask -Prompt "read the repo and remember context" -Directory "C:\wor
 Invoke-CodexTask -Prompt "apply the requested change" -SessionName "repo1"
 ```
 
+### ♊ Experimental Gemini Sessions
+
+```powershell
+# Start or continue a named Gemini wrapper session
+Invoke-GeminiTask -Prompt "read the repo and remember context" -Directory "C:\work\repo" -SessionName "gemini-repo1"
+
+# Continue without respecifying the directory
+Invoke-GeminiTask -Prompt "apply the requested change" -SessionName "gemini-repo1"
+```
+
 ---
 
 ## 📚 Command Reference
@@ -87,6 +102,7 @@ Invoke-CodexTask -Prompt "apply the requested change" -SessionName "repo1"
 
 - `Get-CodexVersion` Resolve the available `codex` command and return version information.
 - `Invoke-CodexTask` Run a one-shot Codex task or resume a named wrapper session.
+- `Invoke-GeminiTask` Run an experimental Gemini headless task or resume a named wrapper session backed by Gemini session ids.
 
 ### 🧭 State & Path Helpers
 
@@ -130,6 +146,12 @@ Default local state path:
 - Advanced session maintenance helpers remain available if you need to inspect or clear wrapper-managed session metadata.
 - The wrapper defaults to `--dangerously-bypass-approvals-and-sandbox`. Use `-AllowDangerous:$false` if you want the initial run to use Codex sandboxing instead.
 - Resume runs temporarily change the PowerShell working directory because `codex exec resume` does not expose `--cd`.
+- `Invoke-GeminiTask` is experimental and intentionally keeps a smaller public surface than the Codex wrapper.
+- Gemini named sessions are stored separately at `%LOCALAPPDATA%\CodexSlots\sessions\named-gemini-sessions.json`.
+- Gemini session continuity is project-scoped. The wrapper keeps a friendly session name that maps to the last observed Gemini session id for that directory.
+- Before resuming a named Gemini session, the wrapper runs `gemini --list-sessions` in the effective directory and starts a fresh session if the stored Gemini id is no longer listed.
+- `Invoke-GeminiTask` uses `--approval-mode yolo` when `-AllowDangerous:$true` and `--sandbox` when `-AllowDangerous:$false`.
+- Gemini trust, auth, and session availability remain controlled by the Gemini CLI itself, so wrapper resumes are best-effort if the native session state changes outside PowerShell.
 
 ## 📄 License
 

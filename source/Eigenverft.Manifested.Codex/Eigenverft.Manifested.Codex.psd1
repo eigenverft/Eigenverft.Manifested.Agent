@@ -31,7 +31,7 @@ CompanyName = 'Eigenverft'
 Copyright = 'Copyright (c) 2026 Eigenverft'
 
 # Description of the functionality provided by this module
-Description = 'Windows-focused PowerShell module that provides a thin wrapper around the OpenAI Codex CLI for task execution, named sessions, and lightweight local state inspection.'
+Description = 'Windows-focused PowerShell module that provides thin wrappers around the OpenAI Codex CLI and experimental Google Gemini CLI task flows, named sessions, and lightweight local state inspection.'
 
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '5.1'
@@ -80,7 +80,8 @@ FunctionsToExport = @(
     'Remove-CodexSession',
     'Set-CodexSessionDirectory',
     'Clear-CodexSessions',
-    'Invoke-CodexTask'
+    'Invoke-CodexTask',
+    'Invoke-GeminiTask'
 )
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
@@ -101,7 +102,8 @@ AliasesToExport = @()
 # List of all files packaged with this module
 FileList = @(
     'Eigenverft.Manifested.Codex.ps1',
-    'Eigenverft.Manifested.Codex.MetadataInstallAndSessions.ps1',
+    'Eigenverft.Manifested.Codex.InvokeCodexTask.ps1',
+    'Eigenverft.Manifested.Codex.InvokeGeminiTask.ps1',
     'Eigenverft.Manifested.Codex.psm1',
     'Eigenverft.Manifested.Codex.psd1',
     'LICENSE.txt'
@@ -113,7 +115,7 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        Tags = @('Eigenverft', 'Manifested', 'Codex', 'PowerShell', 'OpenAI', 'CLI', 'Windows')
+        Tags = @('Eigenverft', 'Manifested', 'Codex', 'Gemini', 'PowerShell', 'OpenAI', 'CLI', 'Windows')
 
         # A URL to the license for this module.
         LicenseUri = 'https://github.com/eigenverft/Eigenverft.Manifested.Codex/blob/main/LICENSE'
@@ -125,7 +127,7 @@ PrivateData = @{
         IconUri = 'https://raw.githubusercontent.com/eigenverft/Eigenverft.Manifested.Codex/main/resources/evt-logo_on_light_border_128x128.png'
 
         # ReleaseNotes of this module
-        ReleaseNotes = 'Refocused the module into a slim Codex task and session wrapper.'
+        ReleaseNotes = 'Added experimental Invoke-GeminiTask support alongside the Codex task and session wrapper.'
 
         # Prerelease string of this module
         Prerelease = ''

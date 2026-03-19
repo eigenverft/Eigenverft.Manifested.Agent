@@ -4,4 +4,5 @@
 
 # Mirrors the module psm1 load order for repo-local testing.
 . "$PSScriptRoot\Eigenverft.Manifested.Codex\Eigenverft.Manifested.Codex.ps1"
-. "$PSScriptRoot\Eigenverft.Manifested.Codex\Eigenverft.Manifested.Codex.MetadataInstallAndSessions.ps1"
+. "$PSScriptRoot\Eigenverft.Manifested.Codex\Eigenverft.Manifested.Codex.InvokeCodexTask.ps1"
+. "$PSScriptRoot\Eigenverft.Manifested.Codex\Eigenverft.Manifested.Codex.InvokeGeminiTask.ps1"
