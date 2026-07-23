@@ -367,3 +367,6 @@ FodyWeavers.xsd
 *[Kk][Ee][Yy]*
 /artifacts/**/*
 /reports/**/*
+
+# Local agent skills stay on the machine; do not version them.
+.agents/skills/
